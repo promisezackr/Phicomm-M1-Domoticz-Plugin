@@ -3,7 +3,10 @@
 # Author: Zack
 #
 """
-<plugin key="Phicomm-M1" name="Phicomm M1 Receiver" author="Zack" version="1.1.0" externallink="http://domoticz.cn/forum/">
+<plugin key="Phicomm-M1" name="Phicomm M1 Receiver" author="Zack" version="1.2.0" externallink="http://domoticz.cn/forum/">
+	<params>
+        <param field="Mode1" label="更新频率(秒)" width="30px" required="true" default="60"/>
+    </params>
 </plugin>
 """
 import Domoticz
@@ -17,12 +20,15 @@ class plugin:
 	clentMaps = {}
 	clientConns = {}
 	pattern = r"(\{.*?\})"
+	intervalTime = 0
+	heartBeatFreq = 10
 	brightness_hex = "aa 2f 01 e0 24 11 39 8f 0b 00 00 00 00 00 00 00 00 b0 f8 93 11 42 0e 00 3d 00 00 02 7b 22 62 72 69 67 68 74 6e 65 73 73 22 3a 22 %s 22 2c 22 74 79 70 65 22 3a 32 7d ff 23 45 4e 44 23"
+	heartbeat_hex = "aa 2f 01 e0 24 11 39 8f 0b 00 00 00 00 00 00 00 00 b0 f8 93 11 42 0e 00 37 00 00 02 7b 22 74 79 70 65 22 3a 35 2c 22 73 74 61 74 75 73 22 3a 31 7d ff 23 45 4e 44 23"
 	dict_value = {'0': '0', '10': '100', '20': '25'}
 
 	# Update Device into DB
 	def updateDevice(self, device, nValue, sValue):
-		if device.sValue != sValue:
+		if device.nValue != nValue or device.sValue != sValue:
 			device.Update(nValue=nValue, sValue=str(sValue))
 			Domoticz.Log("Update "+":'" + str(nValue)+" "+str(sValue)+"' ("+device.Name+")")
 
@@ -42,15 +48,21 @@ class plugin:
 
 			for i in range(4):
 				deviceId = deviceTag + str(i)
-				sValue = jsonData[self.index_to_key(i)]
+				nValue = 1
+				sValue = float(jsonData[self.index_to_key(i)])
 				device = self.getExistDevice(deviceId)
-				if i == 3: #fix hcho value.
-					sValue = float(sValue) / 1000
+				if i == 3: #fix hcho value
+					sValue = sValue / 1000
+				elif i == 1: #fix humidity
+					nValue = int(sValue)
 				if device:
-					self.updateDevice(device,1, sValue)
+					self.updateDevice(device,nValue, sValue)
 				else:
 					deviceNum = len(Devices) + 1
-					Domoticz.Device(Name=identity + "_" + self.index_to_key(i),  Unit=deviceNum, TypeName="Custom", Options={"Custom":self.measure_to_str(i)}, DeviceID=deviceId, Used=1).Create()
+					if i < 2:
+						Domoticz.Device(Name=identity + "_" + self.index_to_key(i), Unit=deviceNum, TypeName=self.index_to_key(i).capitalize(), DeviceID=deviceId, Used=1).Create()
+					else:
+						Domoticz.Device(Name=identity + "_" + self.index_to_key(i),  Unit=deviceNum, TypeName="Custom", Options={"Custom":self.measure_to_str(i)}, DeviceID=deviceId, Used=1).Create()
 
 
 	def generateIdentityTag(self, addr):
@@ -108,7 +120,8 @@ class plugin:
 
 	def onStart(self):
 		# Domoticz.Debugging(1)
-		Domoticz.Heartbeat(60)
+		Domoticz.Heartbeat(self.heartBeatFreq)
+		self.repeatTime = int(Parameters["Mode1"])
 		self.serverConn = Domoticz.Connection(Name="Data Connection", Transport="TCP/IP", Protocol="line", Port="9000")
 		self.serverConn.Listen()
 	def onStop(self):
@@ -132,19 +145,25 @@ class plugin:
 
 	def onCommand(self, Unit, Command, Level, Hue):
 		Domoticz.Log("onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
-		
 		self.genCommand(Unit, Command, Level)
 		
-		#
-
 	def onNotification(self, Name, Subject, Text, Status, Priority, Sound, ImageFile):
 		Domoticz.Log("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)
 
 	def onDisconnect(self, Connection):
 		Domoticz.Log("onDisconnect called")
+		identityTag = self.generateIdentityTag(Connection.Address)
+		if identityTag in self.clientConns:
+			self.clientConns.pop(identityTag)
+			print("drop connect "+Connection.Address)
+
 
 	def onHeartbeat(self):
-		Domoticz.Log("onHeartbeat...")
+		self.intervalTime += self.heartBeatFreq
+		if self.intervalTime >= self.repeatTime:
+			self.intervalTime = 0
+			for identityTag in self.clientConns:
+				self.clientConns[identityTag].Send(bytes.fromhex(self.heartbeat_hex))
 
 global _plugin
 _plugin = plugin()
