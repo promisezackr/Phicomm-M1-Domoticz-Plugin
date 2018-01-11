@@ -3,9 +3,9 @@
 # Author: Zack
 #
 """
-<plugin key="Phicomm-M1" name="Phicomm M1 Receiver" author="Zack" version="1.2.0" externallink="http://domoticz.cn/forum/">
+<plugin key="Phicomm-M1" name="Phicomm M1 Receiver" author="Zack" version="1.2.1" wikilink="如果更新频率设置为0将不发送心跳，即5分钟更新一次" externallink="https://www.domoticz.cn/forum/viewtopic.php?f=11&t=165">
 	<params>
-        <param field="Mode1" label="更新频率(秒)" width="30px" required="true" default="60"/>
+        <param field="Mode1" label="更新频率(秒)" width="30px" required="true" default="0"/>
     </params>
 </plugin>
 """
@@ -55,6 +55,12 @@ class plugin:
 					sValue = sValue / 1000
 				elif i == 1: #fix humidity
 					nValue = int(sValue)
+					if nValue < 46:
+						sValue = 2		#dry
+					elif nValue > 70:
+						sValue = 3		#wet
+					else:
+						sValue = 1		#comfortable
 				if device:
 					self.updateDevice(device,nValue, sValue)
 				else:
@@ -145,8 +151,11 @@ class plugin:
 
 	def onCommand(self, Unit, Command, Level, Hue):
 		Domoticz.Log("onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
+		
 		self.genCommand(Unit, Command, Level)
 		
+		#
+
 	def onNotification(self, Name, Subject, Text, Status, Priority, Sound, ImageFile):
 		Domoticz.Log("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)
 
@@ -159,9 +168,12 @@ class plugin:
 
 
 	def onHeartbeat(self):
+		if self.repeatTime == 0:
+			return
 		self.intervalTime += self.heartBeatFreq
 		if self.intervalTime >= self.repeatTime:
 			self.intervalTime = 0
+			Domoticz.Log("send onHeartbeat....")
 			for identityTag in self.clientConns:
 				self.clientConns[identityTag].Send(bytes.fromhex(self.heartbeat_hex))
 
