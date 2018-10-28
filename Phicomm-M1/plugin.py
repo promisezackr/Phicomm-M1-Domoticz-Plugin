@@ -145,7 +145,7 @@ class plugin:
 		identityTag = self.generateIdentityTag(Connection.Address)
 		self.clientConns[identityTag] = Connection
 
-	def onMessage(self, Connection, Data, Status, Extra):
+	def onMessage(self, Connection, Data):
 		Domoticz.Log("onMessage called for connection: "+Connection.Address+":"+Connection.Port)	
 		self.createAndUpdateDevice(Connection.Address,Data)
 
@@ -192,9 +192,9 @@ def onConnect(Connection, Status, Description):
 	global _plugin
 	_plugin.onConnect(Connection, Status, Description)
 
-def onMessage(Connection, Data, Status, Extra):
+def onMessage(Connection, Data):
 	global _plugin
-	_plugin.onMessage(Connection, Data, Status, Extra)
+	_plugin.onMessage(Connection, Data)
 
 def onCommand(Unit, Command, Level, Hue):
 	global _plugin
